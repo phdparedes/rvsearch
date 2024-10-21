@@ -43,7 +43,8 @@ class Search(object):
                 priors=[], crit='bic', fap=0.001, min_per=3, max_per=10000,
                 jity=2., manual_grid=None, oversampling=1., trend=False, linear=True,
                 eccentric=False, fix=False, polish=True, baseline=True,
-                mcmc=True, workers=1, verbose=True, save_outputs=True, mstar=None):
+                mcmc=True, workers=1, verbose=True, save_outputs=True, mstar=None,
+                perioderLP=None):
 
         if {'time', 'mnvel', 'errvel', 'tel'}.issubset(data.columns):
             self.data = data
@@ -124,6 +125,7 @@ class Search(object):
         self.bic_threshes = dict()
         self.best_bics = dict()
         self.eFAPs = dict()
+        self.perioderLP = perioderLP
 
     def trend_test(self):
         """Perform zero-planet baseline fit, test for significant trend.
@@ -451,7 +453,8 @@ class Search(object):
                 perioder.plot_per()
                 perioder.fig.savefig(outdir+'/dbic{}.pdf'.format(
                                      self.num_planets+1))
-
+            self.perioderLP = perioder
+			
             # Check whether there is a detection. If so, fit free and proceed.
             if perioder.best_bic > perioder.bic_thresh:
                 self.num_planets += 1
