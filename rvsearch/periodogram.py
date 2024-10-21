@@ -151,7 +151,10 @@ class Periodogram(object):
             if self.num_pers is None:
                 self.pers = self.per_spacing()
             else:
-                self.pers = (1/np.linspace(1/self.maxsearchP, 1/self.minsearchP,self.num_pers))[::-1]
+            	self.pers = (1/np.linspace(1/self.maxsearchP, 1/self.minsearchP,self.num_pers))[::-1]
+# prev version 0.3.2            	
+#                 self.pers = 1/np.linspace(1/self.maxsearchP, 1/self.minsearchP,
+#                                           self.num_pers)
 
         self.freqs = 1/self.pers
 
@@ -299,6 +302,7 @@ class Periodogram(object):
         power = periodogram.power(np.flip(self.freqs))
         self.power['ls'] = power
 
+# updated in version 0.3.3
     def eFAP(self):
         """Calculate the threshold for significance based on BJ's empirical
             false-alarm-probability algorithm, and estimate the
@@ -322,6 +326,35 @@ class Periodogram(object):
         self.bic_thresh = np.log(self.fap / self.num_pers) / (-A)+med_BIC
         self.fap_min = np.exp(-A*(sBIC[-1]-med_BIC)) * self.num_pers
 
+# prev version 0.3.2
+#     def eFAP(self):
+#         """Calculate the threshold for significance based on BJ's empirical
+#             false-alarm-probability algorithm, and estimate the
+#             false-alarm-probability of the DBIC global maximum.
+# 
+#         """
+#         # select out intermediate values of BIC, median - 95%
+#         sBIC = np.sort(self.power['bic'])
+#         crop_BIC = sBIC[int(0.5*len(sBIC)):int(0.95*len(sBIC))]
+# 
+#         hist, edge = np.histogram(crop_BIC, bins=10)
+#         cent = (edge[1:]+edge[:-1])/2.
+#         norm = float(np.sum(hist))
+#         nhist = hist/norm
+#         loghist = np.log10(nhist)
+# 
+#         func = np.poly1d(np.polyfit(cent[np.isfinite(loghist)], \
+#                                  loghist[np.isfinite(loghist)], 1))
+#         xmod = np.linspace(np.min(sBIC[np.isfinite(sBIC)]), \
+#                                         10.*np.max(sBIC), 10000)
+#         lfit = 10.**func(xmod)
+#         fap_min = 10.**func(sBIC[-1])*self.num_pers
+#         thresh = xmod[np.where(np.abs(lfit-self.fap/self.num_pers) ==
+#                         np.min(np.abs(lfit-self.fap/self.num_pers)))]
+#         self.bic_thresh = thresh[0]
+#         # Save the empirical-FAP of the DBIC global maximum.
+#         self.fap_min = fap_min
+# 
     def save_per(self, filename, ls=False):
         df = pd.DataFrame([])
         df['period'] = self.pers
@@ -393,8 +426,12 @@ class Periodogram(object):
         ax.set_xscale('log')
         ax.set_xlabel('Period (days)')
         ax.set_ylabel(r'$\Delta$BIC')  # TO-DO: WORK IN AIC/BIC OPTION
-        ax.set_title('Planet {} vs. planet {}'.format(self.num_known_planets+1,
-                                                      self.num_known_planets))
+        if self.num_known_planets == 0:
+        	ax.set_title('Companion {} vs. No Companion'.format(self.num_known_planets+1,
+        													    self.num_known_planets))
+        else:
+	        ax.set_title('Companion {} vs. Companion {}'.format(self.num_known_planets+1,
+	        												    self.num_known_planets))
 
         formatter = ticker.ScalarFormatter()
         formatter.set_scientific(False)
@@ -404,3 +441,73 @@ class Periodogram(object):
         self.fig = fig
         if save:
             fig.savefig('dbic{}.pdf'.format(self.num_known_planets+1))
+
+    def plot_perLP(self, alias=True, floor=True, save=False):
+        """Plot periodogram. LP version
+
+        Args:
+            alias (bool): Plot year, month, day aliases?
+            floor (bool): Set y-axis minimum according to likelihood limit?
+            save (bool): Save plot to current directory?
+
+        """
+        # TO-DO: WORK IN AIC/BIC OPTION, INCLUDE IN PLOT TITLE
+        peak = np.argmax(self.power['bic'])
+        f_real = self.freqs[peak]
+
+        #fig, ax = plt.subplots() - LP
+        ax = plt.gca() #LP
+        
+        ax.plot(self.pers, self.power['bic'])
+        ax.scatter(self.pers[peak], self.power['bic'][peak], label='{} days'\
+                            .format(np.round(self.pers[peak], decimals=1)))
+
+        # If DBIC threshold has been calculated, plot.
+        if self.bic_thresh is not None:
+            ax.axhline(self.bic_thresh, ls=':', c='y', label='{} FAP'\
+                                                    .format(self.fap))
+            upper = 1.1*max(np.amax(self.power['bic']), self.bic_thresh)
+        else:
+            upper = 1.1*np.amax(self.power['bic'])
+
+        if floor:
+            # Set periodogram plot floor according to circular-fit BIC min.
+            # Set this until we figure out how to fix known planet offset. 5/8
+            lower = max(self.floor, np.amin(self.power['bic']))
+        else:
+            lower = np.amin(self.power['bic'])
+
+        ax.set_ylim([lower, upper])
+        ax.set_xlim([self.pers[0], self.pers[-1]])
+
+        if alias:
+            # Plot sidereal day, lunation period, and sidereal year aliases.
+            colors = ['r', 'b', 'g']
+            alias = [0.997, 29.531, 365.256]
+            if np.amin(self.pers) <= 1.:
+                alii = np.arange(1, 3)
+            else:
+                alii = np.arange(3)
+            for i in alii:
+                f_ap = 1./alias[i] + f_real
+                f_am = 1./alias[i] - f_real
+                ax.axvline(1./f_am, linestyle='--', c=colors[i], alpha=0.5,
+                                label='{} day alias'.format(np.round(alias[i],
+                                decimals=1)))
+                ax.axvline(1./f_ap, linestyle='--', c=colors[i], alpha=0.5)
+
+        ax.legend(loc=0)
+        ax.set_xscale('log')
+        ax.set_xlabel('Period (days)')
+        ax.set_ylabel(r'$\Delta$BIC')  # TO-DO: WORK IN AIC/BIC OPTION
+        ax.set_title('Companion {} vs. Companion {}'.format(self.num_known_planets+1,
+                                                      self.num_known_planets))
+
+        formatter = ticker.ScalarFormatter()
+        formatter.set_scientific(False)
+        ax.xaxis.set_major_formatter(formatter)
+
+        # Store figure as object attribute, make separate saving functionality?
+#         self.fig = fig
+#         if save:
+#             fig.savefig('dbic{}.pdf'.format(self.num_known_planets+1))
